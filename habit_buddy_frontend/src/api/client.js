@@ -16,9 +16,20 @@ const TOKEN_KEY = "hb_token";
 export function getApiBaseUrl() {
   /**
    * Returns the base URL for the backend.
-   * If REACT_APP_API_BASE_URL is not set, defaults to same-origin.
+   *
+   * Supported env vars (in priority order):
+   * - REACT_APP_API_BASE_URL (documented in .env.example)
+   * - REACT_APP_API_BASE (used by current runtime .env)
+   * - REACT_APP_BACKEND_URL (also commonly set)
+   *
+   * If none are set, defaults to same-origin.
    */
-  return (process.env.REACT_APP_API_BASE_URL || "").replace(/\/+$/, "");
+  const raw =
+    process.env.REACT_APP_API_BASE_URL ||
+    process.env.REACT_APP_API_BASE ||
+    process.env.REACT_APP_BACKEND_URL ||
+    "";
+  return String(raw).replace(/\/+$/, "");
 }
 
 /** PUBLIC_INTERFACE */
