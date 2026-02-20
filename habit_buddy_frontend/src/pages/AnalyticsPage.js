@@ -7,6 +7,9 @@ import { EmptyState, PageHeader, Section } from "../components/ui";
  * - Frontend-only: uses demoStore habits + checkins.
  * - Heatmap is calendar-style and responsive (scrolls horizontally on small screens).
  * - Trend views show weekly/monthly summaries with minimal, dependency-free charts.
+ * - Enhanced:
+ *   - Habit filters: single + multi-select, plus quick chips.
+ *   - Goal/target lines: computed from habits' target_value in the demo store.
  */
 
 function isoDateKey(d) {
@@ -124,7 +127,8 @@ function computeMonthSeries({ fromMonthDate, months, habitsCount, checkinsByDate
       label: monthLabel(mStart),
       total,
       avgPerDay: total / daysInMonth,
-      adherence
+      adherence,
+      daysInMonth
     });
   }
   return series;
@@ -140,28 +144,107 @@ function StatPill({ label, value, sub }) {
   );
 }
 
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function formatTargetCount(n) {
+  if (!Number.isFinite(n)) return "—";
+  if (n >= 100) return `${Math.round(n)}`;
+  // allow a small bit of precision for odd month lengths, etc.
+  return Number.isInteger(n) ? `${n}` : `${n.toFixed(1)}`;
+}
+
+function parseSelectedIds(v) {
+  try {
+    const parsed = JSON.parse(v);
+    if (Array.isArray(parsed)) return parsed.map(String);
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+function computeTargetPerDayFromHabits(habitsInScope) {
+  // Demo interpretation:
+  // - each habit has a target_value (e.g., water=8, read=20)
+  // - treat "meeting goal today" as completing that target once per day
+  // - in our check-in data model, we only count one check-in per habit/day,
+  //   so "target" becomes the number of habits you aim to check in per day.
+  // To still reflect the presence of target_value, we:
+  // - define "goal day count" = number of habits with a target_value > 0
+  // - (fallback) = number of habits in scope
+  const eligible = habitsInScope.filter((h) => (Number(h.target_value) || 0) > 0);
+  return Math.max(1, eligible.length || habitsInScope.length || 1);
+}
+
+function computeTargets({ mode, habitsInScope, weeklySeries, monthlySeries }) {
+  const targetPerDay = computeTargetPerDayFromHabits(habitsInScope);
+
+  // Weekly/monthly targets are "goal check-ins per day * number of days in period"
+  const weeklyTargetTotal = targetPerDay * 7;
+  const monthlyTargetsByKey = new Map();
+  for (const s of monthlySeries) {
+    monthlyTargetsByKey.set(s.key, targetPerDay * (s.daysInMonth || 30));
+  }
+
+  const targetForSeries = mode === "weekly" ? weeklyTargetTotal : null;
+  return { targetPerDay, weeklyTargetTotal, monthlyTargetsByKey, targetForSeries };
+}
+
+function computeVsTargetMeta(total, targetTotal) {
+  const t = Math.max(0, Number(targetTotal) || 0);
+  if (t <= 0) return { ratioPct: 0, diff: 0, label: "No target" };
+  const ratioPct = (total / t) * 100;
+  const diff = total - t;
+  const label = diff >= 0 ? `+${Math.round(diff)}` : `${Math.round(diff)}`;
+  return { ratioPct, diff, label };
+}
+
+function HabitChip({ active, label, onClick }) {
+  return (
+    <button type="button" className={`analytics-chip ${active ? "active" : ""}`} onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
 // PUBLIC_INTERFACE
 export default function AnalyticsPage() {
   /** Analytics page: check-in calendar heatmap + weekly/monthly summary trends (demo data). */
   const [mode, setMode] = useState("weekly"); // weekly | monthly
-  const [habitScope, setHabitScope] = useState("all"); // all | <habitId>
+
+  // New: filter mode + selection
+  const [filterMode, setFilterMode] = useState("multi"); // multi | single
+  const [selectedHabitIds, setSelectedHabitIds] = useState([]); // array of habit ids
 
   const habits = demoApi.listHabits();
 
+  const habitsById = useMemo(() => new Map(habits.map((h) => [h.id, h])), [habits]);
+
+  const habitsInScope = useMemo(() => {
+    if (filterMode === "single") {
+      const id = selectedHabitIds[0];
+      if (!id) return habits;
+      return habits.filter((h) => h.id === id);
+    }
+
+    // multi
+    if (!selectedHabitIds.length) return habits;
+    const sel = new Set(selectedHabitIds);
+    return habits.filter((h) => sel.has(h.id));
+  }, [habits, filterMode, selectedHabitIds]);
+
   // We only have per-habit listCheckins API; gather checkins based on scope.
   const checkins = useMemo(() => {
-    if (habitScope === "all") {
-      const merged = [];
-      for (const h of habits) {
-        merged.push(...demoApi.listCheckins(h.id, 9999));
-      }
-      return merged;
+    const merged = [];
+    for (const h of habitsInScope) {
+      merged.push(...demoApi.listCheckins(h.id, 9999));
     }
-    return demoApi.listCheckins(habitScope, 9999);
-  }, [habits, habitScope]);
+    return merged;
+  }, [habitsInScope]);
 
   const checkinsByDate = useMemo(() => computeCheckinMap(checkins), [checkins]);
-  const habitsInScope = useMemo(() => (habitScope === "all" ? habits : habits.filter((h) => h.id === habitScope)), [habits, habitScope]);
 
   const today = useMemo(() => startOfDay(new Date()), []);
   const heatmapStart = useMemo(() => startOfWeekMonday(addDays(today, -11 * 7)), [today]); // 12 weeks
@@ -237,13 +320,91 @@ export default function AnalyticsPage() {
   }, [today, habitsInScope.length, checkinsByDate]);
 
   const trendSeries = mode === "weekly" ? weeklySeries : monthlySeries;
-  const maxTotal = useMemo(() => Math.max(1, ...trendSeries.map((s) => s.total)), [trendSeries]);
+
+  const targets = useMemo(() => computeTargets({ mode, habitsInScope, weeklySeries, monthlySeries }), [mode, habitsInScope, weeklySeries, monthlySeries]);
+
+  const maxTotalWithGoal = useMemo(() => {
+    const totals = trendSeries.map((s) => s.total);
+    const goalTotals =
+      mode === "weekly"
+        ? [targets.weeklyTargetTotal]
+        : trendSeries.map((s) => targets.monthlyTargetsByKey.get(s.key) || 0);
+
+    return Math.max(1, ...totals, ...goalTotals);
+  }, [trendSeries, mode, targets.weeklyTargetTotal, targets.monthlyTargetsByKey]);
+
+  const latestPeriod = useMemo(() => (trendSeries.length ? trendSeries[trendSeries.length - 1] : null), [trendSeries]);
+
+  const latestTargetTotal = useMemo(() => {
+    if (!latestPeriod) return 0;
+    if (mode === "weekly") return targets.weeklyTargetTotal;
+    return targets.monthlyTargetsByKey.get(latestPeriod.key) || 0;
+  }, [latestPeriod, mode, targets.weeklyTargetTotal, targets.monthlyTargetsByKey]);
+
+  const latestVsTarget = useMemo(() => {
+    if (!latestPeriod) return { ratioPct: 0, diff: 0, label: "—" };
+    return computeVsTargetMeta(latestPeriod.total, latestTargetTotal);
+  }, [latestPeriod, latestTargetTotal]);
 
   const scopeLabel = useMemo(() => {
-    if (habitScope === "all") return "All habits";
-    const h = habits.find((x) => x.id === habitScope);
-    return h ? h.title : "Habit";
-  }, [habitScope, habits]);
+    if (filterMode === "single") {
+      const id = selectedHabitIds[0];
+      if (!id) return "All habits";
+      const h = habitsById.get(id);
+      return h ? h.title : "Habit";
+    }
+
+    // multi mode
+    if (!selectedHabitIds.length || selectedHabitIds.length === habits.length) return "All habits";
+    if (selectedHabitIds.length === 1) {
+      const h = habitsById.get(selectedHabitIds[0]);
+      return h ? h.title : "1 habit";
+    }
+    return `${selectedHabitIds.length} habits`;
+  }, [filterMode, selectedHabitIds, habits.length, habitsById]);
+
+  const selectedSummary = useMemo(() => {
+    if (filterMode === "single") {
+      const id = selectedHabitIds[0];
+      if (!id) return "All habits";
+      const h = habitsById.get(id);
+      return h ? `${h.icon ? `${h.icon} ` : ""}${h.title}` : "Habit";
+    }
+
+    if (!selectedHabitIds.length) return "All habits";
+    const titles = selectedHabitIds
+      .map((id) => habitsById.get(id))
+      .filter(Boolean)
+      .map((h) => `${h.icon ? `${h.icon} ` : ""}${h.title}`);
+    if (!titles.length) return "Selected habits";
+    return titles.length <= 3 ? titles.join(", ") : `${titles.slice(0, 2).join(", ")} +${titles.length - 2} more`;
+  }, [filterMode, selectedHabitIds, habitsById]);
+
+  const multiSelectValue = useMemo(() => JSON.stringify(selectedHabitIds), [selectedHabitIds]);
+
+  const handleToggleHabit = (habitId) => {
+    const id = String(habitId);
+    if (filterMode === "single") {
+      setSelectedHabitIds((cur) => (cur[0] === id ? [] : [id]));
+      return;
+    }
+    setSelectedHabitIds((cur) => {
+      const set = new Set(cur);
+      if (set.has(id)) set.delete(id);
+      else set.add(id);
+      return Array.from(set);
+    });
+  };
+
+  const handleSelectAll = () => setSelectedHabitIds([]);
+  const handleClear = () => setSelectedHabitIds([]);
+
+  const goalHelp = useMemo(() => {
+    // Explain the demo mapping succinctly.
+    const perDay = targets.targetPerDay;
+    const unit = perDay === 1 ? "habit" : "habits";
+    return `Goal line: ${perDay}/${unit} checked-in per day (derived from habits’ target_value).`;
+  }, [targets.targetPerDay]);
 
   return (
     <div className="analytics">
@@ -253,23 +414,116 @@ export default function AnalyticsPage() {
         actions={
           <>
             <div className="row wrap" style={{ gap: 8 }}>
-              <label className="sr-only" htmlFor="analytics-scope">
-                Habit scope
-              </label>
-              <select
-                id="analytics-scope"
-                className="select"
-                style={{ width: 220, height: 40 }}
-                value={habitScope}
-                onChange={(e) => setHabitScope(e.target.value)}
-              >
-                <option value="all">All habits</option>
-                {habits.map((h) => (
-                  <option key={h.id} value={h.id}>
-                    {h.title}
-                  </option>
-                ))}
-              </select>
+              <div className="analytics-filterCard" aria-label="Habit filters">
+                <div className="analytics-filterCard__top">
+                  <div className="analytics-filterCard__title">Filter habits</div>
+                  <div className="analytics-filterCard__mode" role="tablist" aria-label="Filter mode">
+                    <button
+                      type="button"
+                      className={`analytics-filterCard__modeBtn ${filterMode === "single" ? "active" : ""}`}
+                      onClick={() => {
+                        setFilterMode("single");
+                        // Keep selection: in single mode only the first matters.
+                        setSelectedHabitIds((cur) => (cur.length ? [cur[0]] : []));
+                      }}
+                      role="tab"
+                      aria-selected={filterMode === "single"}
+                    >
+                      Single
+                    </button>
+                    <button
+                      type="button"
+                      className={`analytics-filterCard__modeBtn ${filterMode === "multi" ? "active" : ""}`}
+                      onClick={() => setFilterMode("multi")}
+                      role="tab"
+                      aria-selected={filterMode === "multi"}
+                    >
+                      Multi
+                    </button>
+                  </div>
+                </div>
+
+                <div className="analytics-filterCard__controls">
+                  <label className="sr-only" htmlFor="analytics-habits-select">
+                    Habits selection
+                  </label>
+                  <select
+                    id="analytics-habits-select"
+                    className="select"
+                    style={{ width: 260, height: 40 }}
+                    value={filterMode === "single" ? (selectedHabitIds[0] || "all") : multiSelectValue}
+                    onChange={(e) => {
+                      if (filterMode === "single") {
+                        const v = e.target.value;
+                        setSelectedHabitIds(v === "all" ? [] : [v]);
+                      } else {
+                        setSelectedHabitIds(parseSelectedIds(e.target.value));
+                      }
+                    }}
+                  >
+                    {filterMode === "single" ? (
+                      <>
+                        <option value="all">All habits</option>
+                        {habits.map((h) => (
+                          <option key={h.id} value={h.id}>
+                            {h.title}
+                          </option>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <option value="[]">All habits</option>
+                        {habits.map((h) => {
+                          // toggle this habit in the array
+                          const set = new Set(selectedHabitIds);
+                          if (set.has(h.id)) set.delete(h.id);
+                          else set.add(h.id);
+                          const next = JSON.stringify(Array.from(set));
+                          const label = `${selectedHabitIds.includes(h.id) ? "✓ " : ""}${h.title}`;
+                          return (
+                            <option key={h.id} value={next}>
+                              {label}
+                            </option>
+                          );
+                        })}
+                      </>
+                    )}
+                  </select>
+
+                  {filterMode === "multi" ? (
+                    <div className="row wrap" style={{ gap: 8 }}>
+                      <button type="button" className="btn btn-small" onClick={handleSelectAll} title="Show all habits">
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-small"
+                        onClick={() => setSelectedHabitIds([])}
+                        title="Clear selection (same as All in this demo UI)"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="btn btn-small" onClick={handleClear} title="Clear selection">
+                      Clear
+                    </button>
+                  )}
+                </div>
+
+                <div className="analytics-filterCard__chips" aria-label="Quick habit chips">
+                  <HabitChip active={!selectedHabitIds.length} label="All" onClick={() => setSelectedHabitIds([])} />
+                  {habits.slice(0, 8).map((h) => {
+                    const active = selectedHabitIds.includes(h.id);
+                    const label = `${h.icon ? `${h.icon} ` : ""}${h.title}`;
+                    return <HabitChip key={h.id} active={active} label={label} onClick={() => handleToggleHabit(h.id)} />;
+                  })}
+                </div>
+
+                <div className="analytics-filterCard__hint" title={selectedSummary}>
+                  {selectedSummary}
+                </div>
+              </div>
 
               <div className="analytics-toggle" role="tablist" aria-label="Trend timeframe">
                 <button
@@ -307,17 +561,29 @@ export default function AnalyticsPage() {
           <div className="grid cols-3">
             <div className="card">
               <div className="card-body">
-                <StatPill label="Scope" value={scopeLabel} sub={`${habitsInScope.length} habit${habitsInScope.length === 1 ? "" : "s"}`} />
+                <StatPill
+                  label="Scope"
+                  value={scopeLabel}
+                  sub={`${habitsInScope.length} habit${habitsInScope.length === 1 ? "" : "s"} • Goal: ${targets.targetPerDay}/day`}
+                />
               </div>
             </div>
             <div className="card">
               <div className="card-body">
-                <StatPill label="Check-ins (12w)" value={stats.totalCheckins} sub={`${stats.activeDays} active day${stats.activeDays === 1 ? "" : "s"}`} />
+                <StatPill
+                  label="Check-ins (12w)"
+                  value={stats.totalCheckins}
+                  sub={`${stats.activeDays} active day${stats.activeDays === 1 ? "" : "s"} • ${goalHelp}`}
+                />
               </div>
             </div>
             <div className="card">
               <div className="card-body">
-                <StatPill label="Adherence (12w)" value={safePct(stats.adherence)} sub={`Current streak: ${stats.currentAnyStreak} day${stats.currentAnyStreak === 1 ? "" : "s"}`} />
+                <StatPill
+                  label="Adherence (12w)"
+                  value={safePct(stats.adherence)}
+                  sub={`Current streak: ${stats.currentAnyStreak} day${stats.currentAnyStreak === 1 ? "" : "s"} • Latest vs goal: ${safePct(latestVsTarget.ratioPct)}`}
+                />
               </div>
             </div>
           </div>
@@ -386,36 +652,62 @@ export default function AnalyticsPage() {
               <div className="card-header">
                 <div>
                   <h3 className="card-title">{mode === "weekly" ? "Weekly trend" : "Monthly trend"}</h3>
-                  <p className="card-subtitle">
-                    Totals + adherence (check-ins / possible check-ins) • {scopeLabel}
-                  </p>
+                  <p className="card-subtitle">Totals + adherence (check-ins / possible check-ins) • {scopeLabel}</p>
                 </div>
               </div>
 
               <div className="card-body">
-                <div className="trend" role="list" aria-label="Trend list">
-                  {trendSeries
-                    .slice()
-                    .reverse()
-                    .map((s) => {
-                      const widthPct = Math.round((s.total / maxTotal) * 100);
-                      return (
-                        <div key={s.key} className="trend-row" role="listitem">
-                          <div className="trend-row__label">{s.label}</div>
-                          <div className="trend-row__barWrap" aria-hidden="true">
-                            <div className="trend-row__bar" style={{ width: `${widthPct}%` }} />
+                <div className="trend">
+                  <div className="trend-goalNote">
+                    <span className="pill">Goal line</span>
+                    <span className="trend-goalNote__text">{goalHelp}</span>
+                  </div>
+
+                  <div className="trend-goalLine" aria-hidden="true">
+                    <div
+                      className="trend-goalLine__dash"
+                      style={{
+                        top: `${100 - clamp((latestTargetTotal / maxTotalWithGoal) * 100, 0, 100)}%`
+                      }}
+                    />
+                    <div className="trend-goalLine__label">
+                      Latest target: {formatTargetCount(latestTargetTotal)} check-ins / {mode === "weekly" ? "week" : "month"}
+                    </div>
+                  </div>
+
+                  <div role="list" aria-label="Trend list">
+                    {trendSeries
+                      .slice()
+                      .reverse()
+                      .map((s) => {
+                        const targetTotal = mode === "weekly" ? targets.weeklyTargetTotal : targets.monthlyTargetsByKey.get(s.key) || 0;
+                        const widthPct = Math.round((s.total / maxTotalWithGoal) * 100);
+                        const goalWidthPct = Math.round((targetTotal / maxTotalWithGoal) * 100);
+                        const vs = computeVsTargetMeta(s.total, targetTotal);
+
+                        return (
+                          <div key={s.key} className="trend-row" role="listitem">
+                            <div className="trend-row__label">{s.label}</div>
+
+                            <div className="trend-row__barWrap" aria-hidden="true">
+                              <div className="trend-row__goal" style={{ width: `${goalWidthPct}%` }} />
+                              <div className="trend-row__bar" style={{ width: `${widthPct}%` }} />
+                            </div>
+
+                            <div className="trend-row__meta">
+                              <span className="trend-row__total">{s.total}</span>
+                              <span className="trend-row__muted">
+                                {safePct(s.adherence)} • {safePct(vs.ratioPct)}
+                              </span>
+                            </div>
                           </div>
-                          <div className="trend-row__meta">
-                            <span className="trend-row__total">{s.total}</span>
-                            <span className="trend-row__muted">{safePct(s.adherence)}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                  </div>
                 </div>
 
                 <div className="notice" style={{ marginTop: 12 }}>
-                  Tip: Create multiple habits and check in across days to make the heatmap and adherence trend more interesting.
+                  Tip: Use multi-select to compare a subset of habits. The goal overlay is derived from demo habit targets and displayed as a reference line.
                 </div>
               </div>
             </div>
