@@ -64,7 +64,8 @@ export default function FeedPage() {
               <div key={p.id} className="list-item">
                 <div style={{ maxWidth: "80%" }}>
                   <h3>
-                    {p.author} <span style={{ color: "var(--muted)", fontWeight: 500, marginLeft: 8, fontSize: 12 }}>
+                    {p.author}{" "}
+                    <span style={{ color: "var(--muted)", fontWeight: 500, marginLeft: 8, fontSize: 12 }}>
                       {new Date(p.createdAt).toLocaleString()}
                     </span>
                   </h3>
@@ -72,13 +73,21 @@ export default function FeedPage() {
                   <div className="row wrap" style={{ marginTop: 8 }}>
                     <span className="pill">Likes {p.likes}</span>
                     <span className="pill">Comments {p.comments}</span>
+                    {p.likedByMe ? <span className="pill">You liked</span> : null}
                   </div>
                 </div>
                 <div className="row wrap">
-                  <button type="button" className="btn btn-small" onClick={() => ui.showToast("Liked (demo)")}>
-                    Like
+                  <button
+                    type="button"
+                    className={`btn btn-small ${p.likedByMe ? "btn-primary" : ""}`}
+                    onClick={() => {
+                      demoApi.toggleLikePost(p.id);
+                      setRefresh((x) => x + 1);
+                    }}
+                  >
+                    {p.likedByMe ? "Liked" : "Like"}
                   </button>
-                  <button type="button" className="btn btn-small" onClick={() => ui.showToast("Comment (demo)")}>
+                  <button type="button" className="btn btn-small" onClick={() => ui.showToast("Comments coming soon (demo)")}>
                     Comment
                   </button>
                 </div>

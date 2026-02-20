@@ -11,7 +11,13 @@ function usePageTitle() {
     const path = location.pathname || "/";
     if (path.startsWith("/app/dashboard")) return "Dashboard";
     if (path.startsWith("/app/habits")) return "Habits";
-    if (path.startsWith("/app/groups")) return "Groups & Challenges";
+    if (path.startsWith("/app/social")) return "Social";
+    if (path.startsWith("/app/groups")) return "Groups";
+    if (path.startsWith("/app/challenges")) return "Challenges";
+    if (path.startsWith("/app/reminders")) return "Reminders";
+    if (path.startsWith("/app/personalization")) return "Personalization";
+    if (path.startsWith("/app/power")) return "Power Features";
+    if (path.startsWith("/app/admin")) return "Admin";
     if (path.startsWith("/app/feed")) return "Community Feed";
     if (path.startsWith("/app/settings")) return "Settings";
     return "Habit Buddy";
@@ -59,7 +65,17 @@ export default function AppShell() {
                 </div>
                 <div className="nav-label">
                   <span>Habits</span>
-                  <small>Create & check-in</small>
+                  <small>Upgrades + check-ins</small>
+                </div>
+              </NavLink>
+
+              <NavLink to="/app/social" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+                <div className="nav-icon" aria-hidden="true">
+                  S
+                </div>
+                <div className="nav-label">
+                  <span>Social</span>
+                  <small>Friends, badges</small>
                 </div>
               </NavLink>
 
@@ -69,23 +85,73 @@ export default function AppShell() {
                 </div>
                 <div className="nav-label">
                   <span>Groups</span>
-                  <small>Challenges, teams</small>
+                  <small>Teams & invites</small>
+                </div>
+              </NavLink>
+
+              <NavLink to="/app/challenges" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+                <div className="nav-icon" aria-hidden="true">
+                  C
+                </div>
+                <div className="nav-label">
+                  <span>Challenges</span>
+                  <small>Sprints & progress</small>
+                </div>
+              </NavLink>
+
+              <NavLink to="/app/reminders" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+                <div className="nav-icon" aria-hidden="true">
+                  R
+                </div>
+                <div className="nav-label">
+                  <span>Reminders</span>
+                  <small>Schedules & pings</small>
+                </div>
+              </NavLink>
+
+              <NavLink to="/app/personalization" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+                <div className="nav-icon" aria-hidden="true">
+                  P
+                </div>
+                <div className="nav-label">
+                  <span>Personalize</span>
+                  <small>Layout & style</small>
+                </div>
+              </NavLink>
+
+              <NavLink to="/app/power" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+                <div className="nav-icon" aria-hidden="true">
+                  ⚡
+                </div>
+                <div className="nav-label">
+                  <span>Power</span>
+                  <small>Templates & export</small>
+                </div>
+              </NavLink>
+
+              <NavLink to="/app/admin" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+                <div className="nav-icon" aria-hidden="true">
+                  A
+                </div>
+                <div className="nav-label">
+                  <span>Admin</span>
+                  <small>Moderation</small>
                 </div>
               </NavLink>
 
               <NavLink to="/app/feed" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
                 <div className="nav-icon" aria-hidden="true">
-                  C
+                  F
                 </div>
                 <div className="nav-label">
-                  <span>Community</span>
+                  <span>Feed</span>
                   <small>Posts & tips</small>
                 </div>
               </NavLink>
 
               <NavLink to="/app/settings" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
                 <div className="nav-icon" aria-hidden="true">
-                  S
+                  ⚙
                 </div>
                 <div className="nav-label">
                   <span>Settings</span>

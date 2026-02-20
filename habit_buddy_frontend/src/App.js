@@ -5,14 +5,20 @@ import AppShell from "./components/AppShell";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { UIProvider, useUI } from "./context/UIContext";
+import AdminPage from "./pages/AdminPage";
+import ChallengesPage from "./pages/ChallengesPage";
 import DashboardPage from "./pages/DashboardPage";
 import FeedPage from "./pages/FeedPage";
 import GroupsPage from "./pages/GroupsPage";
 import HabitsPage from "./pages/HabitsPage";
 import LoginPage from "./pages/LoginPage";
 import NotFoundPage from "./pages/NotFoundPage";
+import PersonalizationPage from "./pages/PersonalizationPage";
+import PowerFeaturesPage from "./pages/PowerFeaturesPage";
 import RegisterPage from "./pages/RegisterPage";
+import RemindersPage from "./pages/RemindersPage";
 import SettingsPage from "./pages/SettingsPage";
+import SocialPage from "./pages/SocialPage";
 
 function ToastHost() {
   const ui = useUI();
@@ -37,7 +43,13 @@ export default function App() {
               <Route path="/app" element={<AppShell />}>
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="habits" element={<HabitsPage />} />
+                <Route path="social" element={<SocialPage />} />
                 <Route path="groups" element={<GroupsPage />} />
+                <Route path="challenges" element={<ChallengesPage />} />
+                <Route path="reminders" element={<RemindersPage />} />
+                <Route path="personalization" element={<PersonalizationPage />} />
+                <Route path="power" element={<PowerFeaturesPage />} />
+                <Route path="admin" element={<AdminPage />} />
                 <Route path="feed" element={<FeedPage />} />
                 <Route path="settings" element={<SettingsPage />} />
                 <Route index element={<Navigate to="/app/dashboard" replace />} />
