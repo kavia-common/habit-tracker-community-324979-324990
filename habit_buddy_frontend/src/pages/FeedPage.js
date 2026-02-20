@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { demoApi } from "../api/demoStore";
+import { EmptyState, PageHeader } from "../components/ui";
 import { useUI } from "../context/UIContext";
 
 /** PUBLIC_INTERFACE */
@@ -17,6 +18,16 @@ export default function FeedPage() {
 
   return (
     <div className="grid" style={{ gap: 12 }}>
+      <PageHeader
+        title="Community Feed"
+        subtitle="Share wins, learn what worked for others, and keep the vibe supportive."
+        actions={
+          <button type="button" className="btn btn-small" onClick={() => ui.showToast("Feed filters coming soon (demo)")}>
+            Filter
+          </button>
+        }
+      />
+
       <div className="card">
         <div className="card-header">
           <div>
@@ -25,14 +36,8 @@ export default function FeedPage() {
           </div>
         </div>
         <div className="card-body">
-          <textarea
-            className="textarea"
-            rows={3}
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="What helped you today?"
-          />
-          <div className="row between" style={{ marginTop: 10 }}>
+          <textarea className="textarea" rows={3} value={content} onChange={(e) => setContent(e.target.value)} placeholder="What helped you today?" />
+          <div className="row between" style={{ marginTop: 10, alignItems: "center" }}>
             <span style={{ color: "var(--muted)", fontSize: 12 }}>Be kind. Be constructive.</span>
             <button
               type="button"
@@ -54,20 +59,18 @@ export default function FeedPage() {
       <div className="card">
         <div className="card-header">
           <div>
-            <h2 className="card-title">Community feed</h2>
-            <p className="card-subtitle">Latest posts</p>
+            <h2 className="card-title">Latest posts</h2>
+            <p className="card-subtitle">New from the community</p>
           </div>
         </div>
         <div className="card-body">
           <div className="list">
             {feed.map((p) => (
               <div key={p.id} className="list-item">
-                <div style={{ maxWidth: "80%" }}>
-                  <h3>
-                    {p.author}{" "}
-                    <span style={{ color: "var(--muted)", fontWeight: 500, marginLeft: 8, fontSize: 12 }}>
-                      {new Date(p.createdAt).toLocaleString()}
-                    </span>
+                <div style={{ maxWidth: "100%" }}>
+                  <h3 style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                    {p.author}
+                    <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 12 }}>{new Date(p.createdAt).toLocaleString()}</span>
                   </h3>
                   <p style={{ whiteSpace: "pre-wrap" }}>{p.content}</p>
                   <div className="row wrap" style={{ marginTop: 8 }}>
@@ -93,7 +96,9 @@ export default function FeedPage() {
                 </div>
               </div>
             ))}
-            {feed.length === 0 ? <div className="notice">No posts yet.</div> : null}
+            {feed.length === 0 ? (
+              <EmptyState title="No posts yet" description="Share your first update above to start the conversation." />
+            ) : null}
           </div>
         </div>
       </div>
