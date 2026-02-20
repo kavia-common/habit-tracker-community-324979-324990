@@ -2,6 +2,8 @@ import React, { useMemo, useState } from "react";
 import { demoApi } from "../api/demoStore";
 import { EmptyState, PageHeader, Section } from "../components/ui";
 import { useUI } from "../context/UIContext";
+import { enqueueFeedPostCreate, enqueueFeedReactionToggle, syncQueuedActions } from "../offline/offlineQueue";
+import { useOfflineSync } from "../offline/useOfflineSync";
 
 const REACTIONS = [
   { key: "like", label: "Like", emoji: "👍" },
@@ -21,8 +23,9 @@ function reactionTotal(post) {
 
 /** PUBLIC_INTERFACE */
 export default function FeedPage() {
-  /** Community feed page: post achievements and tips with reactions, filters, and discovery (demo). */
+  /** Community feed page: post achievements and tips with reactions, filters, and discovery (demo + offline queue). */
   const ui = useUI();
+  const { isOnline } = useOfflineSync();
   const [refresh, setRefresh] = useState(0);
 
   // Composer
@@ -147,12 +150,34 @@ export default function FeedPage() {
                   type="button"
                   className="btn btn-primary"
                   disabled={!content.trim()}
-                  onClick={() => {
-                    demoApi.createPost(content, { tags: selectedTags });
+                  onClick={async () => {
+                    const payload = {
+                      content: content.trim(),
+                      tags: selectedTags,
+                      post_type: "text",
+                      group_id: null,
+                      data: null
+                    };
+
+                    // Optimistic UI: always update demo store immediately (works offline too).
+                    demoApi.createPost(payload.content, { tags: payload.tags, postType: payload.post_type });
+
+                    // Always enqueue for eventual sync (API + demo fallback handled during sync).
+                    enqueueFeedPostCreate(payload);
+
                     setContent("");
                     setSelectedTags([]);
-                    ui.showToast("Posted");
                     setRefresh((x) => x + 1);
+
+                    if (!isOnline) {
+                      ui.showToast("Offline — post queued for sync");
+                      return;
+                    }
+
+                    // If online, attempt to flush right away.
+                    const res = await syncQueuedActions();
+                    if (res.sent > 0) ui.showToast("Posted + synced");
+                    else ui.showToast("Posted (sync pending)");
                   }}
                 >
                   Post
@@ -322,9 +347,24 @@ export default function FeedPage() {
                                 type="button"
                                 className={`btn btn-small ${active ? "btn-primary" : ""}`}
                                 aria-pressed={active}
-                                onClick={() => {
+                                onClick={async () => {
+                                  // Optimistic UI first
+                                  const before = demoApi.listFeed().find((x) => x.id === p.id);
+                                  const prevReacted = Boolean(before?.reactions?.[r.key]?.reactedByMe);
+
                                   demoApi.toggleReaction(p.id, r.key);
                                   setRefresh((x) => x + 1);
+
+                                  // Queue desired final state (after toggle)
+                                  enqueueFeedReactionToggle({ postId: p.id, reactionKey: r.key, toReacted: !prevReacted });
+
+                                  if (!isOnline) {
+                                    ui.showToast("Offline — reaction queued");
+                                    return;
+                                  }
+
+                                  // Online: best-effort immediate sync
+                                  await syncQueuedActions();
                                 }}
                                 title={`${r.label}`}
                               >

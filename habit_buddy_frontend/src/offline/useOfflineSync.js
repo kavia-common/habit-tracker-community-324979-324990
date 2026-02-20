@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getQueuedCheckinsCount, syncQueuedCheckins } from "./offlineQueue";
+import { getQueuedActionsCount, syncQueuedActions } from "./offlineQueue";
 
 /** Small helper: keep state in sync with localStorage-backed queue. */
 function useQueueCountPolling({ intervalMs = 1500 } = {}) {
-  const [count, setCount] = useState(() => getQueuedCheckinsCount());
+  const [count, setCount] = useState(() => getQueuedActionsCount());
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      setCount(getQueuedCheckinsCount());
+      setCount(getQueuedActionsCount());
     }, intervalMs);
     return () => window.clearInterval(id);
   }, [intervalMs]);
@@ -20,7 +20,7 @@ export function useOfflineSync() {
   /**
    * Hook providing:
    * - isOnline: browser connectivity (navigator.onLine + events)
-   * - queueCount: number of queued check-ins pending sync
+   * - queueCount: number of queued actions pending sync (check-ins + feed actions)
    * - syncNow(): manual sync action
    * - syncing + lastSync summary for UI indicators
    */
@@ -47,11 +47,11 @@ export function useOfflineSync() {
   }, []);
 
   const syncNow = useCallback(async () => {
-    if (syncingRef.current) return { sent: 0, remaining: getQueuedCheckinsCount(), results: [] };
+    if (syncingRef.current) return { sent: 0, remaining: getQueuedActionsCount(), results: [] };
     syncingRef.current = true;
     setSyncing(true);
     try {
-      const res = await syncQueuedCheckins();
+      const res = await syncQueuedActions();
       setLastSync({ at: new Date().toISOString(), ...res });
       return res;
     } finally {
