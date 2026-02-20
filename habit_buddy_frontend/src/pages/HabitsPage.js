@@ -3,11 +3,14 @@ import { demoApi } from "../api/demoStore";
 import FormField from "../components/FormField";
 import { EmptyState, PageHeader } from "../components/ui";
 import { useUI } from "../context/UIContext";
+import { enqueueHabitCheckin, syncQueuedCheckins } from "../offline/offlineQueue";
+import { useOfflineSync } from "../offline/useOfflineSync";
 
 /** PUBLIC_INTERFACE */
 export default function HabitsPage() {
   /** Habits list with upgraded fields + create/edit/delete and check-ins. */
   const ui = useUI();
+  const { isOnline } = useOfflineSync();
   const [refresh, setRefresh] = useState(0);
 
   const habits = useMemo(() => {
@@ -208,12 +211,35 @@ export default function HabitsPage() {
                         <button
                           type="button"
                           className={`btn btn-small ${checked ? "" : "btn-primary"}`}
-                          onClick={() => {
-                            demoApi.checkInHabit(h.id, {
+                          onClick={async () => {
+                            const payload = {
+                              habitId: h.id,
+                              checkin_date: today,
                               value: checkinDraft.value ? Number(checkinDraft.value) : null,
                               note: checkinDraft.note || null
+                            };
+
+                            // Always apply to demo state immediately so the UI feels instant (and works offline).
+                            demoApi.checkInHabit(h.id, {
+                              date: payload.checkin_date,
+                              value: payload.value,
+                              note: payload.note
                             });
-                            ui.showToast(checked ? "Updated check-in" : "Check-in saved");
+
+                            // Queue for eventual sync.
+                            enqueueHabitCheckin(payload);
+
+                            if (!isOnline) {
+                              ui.showToast("Offline — queued for sync");
+                              setRefresh((x) => x + 1);
+                              return;
+                            }
+
+                            // If online, attempt to flush right away (API first, demo fallback inside sync).
+                            const res = await syncQueuedCheckins();
+                            if (res.sent > 0) ui.showToast(checked ? "Updated + synced" : "Check-in synced");
+                            else ui.showToast(checked ? "Updated (sync pending)" : "Check-in saved (sync pending)");
+
                             setRefresh((x) => x + 1);
                           }}
                         >

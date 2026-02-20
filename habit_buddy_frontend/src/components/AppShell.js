@@ -4,6 +4,7 @@ import { demoApi } from "../api/demoStore";
 import { useAuth } from "../context/AuthContext";
 import { useUI } from "../context/UIContext";
 import NotificationsPanel from "./NotificationsPanel";
+import OfflineIndicator from "./OfflineIndicator";
 
 function usePageTitle() {
   const location = useLocation();
@@ -217,6 +218,9 @@ export default function AppShell() {
           <header className="topbar" role="banner">
             <h1>{title}</h1>
             <div className="spacer" />
+            <div style={{ minWidth: 220 }}>
+              <OfflineIndicator />
+            </div>
             <button type="button" className="btn btn-small" onClick={() => navigate("/app/habits")}>
               Quick: Check-in
             </button>
