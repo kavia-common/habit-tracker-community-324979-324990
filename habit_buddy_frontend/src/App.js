@@ -1,49 +1,53 @@
-import React, { useState, useEffect } from 'react';
-import logo from './logo.svg';
-import './App.css';
+import React from "react";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import "./App.css";
+import AppShell from "./components/AppShell";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { AuthProvider } from "./context/AuthContext";
+import { UIProvider, useUI } from "./context/UIContext";
+import DashboardPage from "./pages/DashboardPage";
+import FeedPage from "./pages/FeedPage";
+import GroupsPage from "./pages/GroupsPage";
+import HabitsPage from "./pages/HabitsPage";
+import LoginPage from "./pages/LoginPage";
+import NotFoundPage from "./pages/NotFoundPage";
+import RegisterPage from "./pages/RegisterPage";
+import SettingsPage from "./pages/SettingsPage";
 
-// PUBLIC_INTERFACE
-function App() {
-  const [theme, setTheme] = useState('light');
-
-  // Effect to apply theme to document element
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-  }, [theme]);
-
-  // PUBLIC_INTERFACE
-  const toggleTheme = () => {
-    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
-  };
-
-  return (
-    <div className="App">
-      <header className="App-header">
-        <button 
-          className="theme-toggle" 
-          onClick={toggleTheme}
-          aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-        >
-          {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
-        </button>
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <p>
-          Current theme: <strong>{theme}</strong>
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+function ToastHost() {
+  const ui = useUI();
+  if (!ui.toast) return null;
+  return <div className="toast">{ui.toast.message}</div>;
 }
 
-export default App;
+// PUBLIC_INTERFACE
+export default function App() {
+  /** App entry: providers + router. */
+  return (
+    <UIProvider>
+      <AuthProvider>
+        <BrowserRouter>
+          <ToastHost />
+          <Routes>
+            <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+
+            <Route element={<ProtectedRoute />}>
+              <Route path="/app" element={<AppShell />}>
+                <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="habits" element={<HabitsPage />} />
+                <Route path="groups" element={<GroupsPage />} />
+                <Route path="feed" element={<FeedPage />} />
+                <Route path="settings" element={<SettingsPage />} />
+                <Route index element={<Navigate to="/app/dashboard" replace />} />
+              </Route>
+            </Route>
+
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </UIProvider>
+  );
+}
