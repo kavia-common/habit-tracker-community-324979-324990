@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getQueuedActionsCount, syncQueuedActions } from "./offlineQueue";
+import { getQueueSummary, syncQueuedActions } from "./offlineQueue";
 
 /** Small helper: keep state in sync with localStorage-backed queue. */
-function useQueueCountPolling({ intervalMs = 1500 } = {}) {
-  const [count, setCount] = useState(() => getQueuedActionsCount());
+function useQueueSummaryPolling({ intervalMs = 1500 } = {}) {
+  const [summary, setSummary] = useState(() => getQueueSummary());
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      setCount(getQueuedActionsCount());
+      setSummary(getQueueSummary());
     }, intervalMs);
     return () => window.clearInterval(id);
   }, [intervalMs]);
 
-  return count;
+  return summary;
 }
 
 // PUBLIC_INTERFACE
@@ -20,12 +20,15 @@ export function useOfflineSync() {
   /**
    * Hook providing:
    * - isOnline: browser connectivity (navigator.onLine + events)
-   * - queueCount: number of queued actions pending sync (check-ins + feed actions)
+   * - queueCount: total queued actions pending sync (including dead-letter)
+   * - pendingCount: queued actions that will still retry
+   * - deadCount: permanently failed actions
+   * - nextRetryAtMs: earliest scheduled retry time (ms) among pending items
    * - syncNow(): manual sync action
    * - syncing + lastSync summary for UI indicators
    */
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine !== false));
-  const queueCount = useQueueCountPolling({ intervalMs: 1200 });
+  const queueSummary = useQueueSummaryPolling({ intervalMs: 1200 });
 
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState(null);
@@ -47,7 +50,7 @@ export function useOfflineSync() {
   }, []);
 
   const syncNow = useCallback(async () => {
-    if (syncingRef.current) return { sent: 0, remaining: getQueuedActionsCount(), results: [] };
+    if (syncingRef.current) return { sent: 0, remaining: queueSummary.total, results: [], summary: queueSummary };
     syncingRef.current = true;
     setSyncing(true);
     try {
@@ -58,24 +61,26 @@ export function useOfflineSync() {
       syncingRef.current = false;
       setSyncing(false);
     }
-  }, []);
+  }, [queueSummary]);
 
   // Auto-sync when we come back online and there is anything to flush.
   useEffect(() => {
     if (!isOnline) return;
-    if (queueCount <= 0) return;
-    // Fire and forget: the UI can still show the syncing state.
+    if (queueSummary.pending <= 0) return;
     syncNow();
-  }, [isOnline, queueCount, syncNow]);
+  }, [isOnline, queueSummary.pending, syncNow]);
 
   return useMemo(
     () => ({
       isOnline,
-      queueCount,
+      queueCount: queueSummary.total,
+      pendingCount: queueSummary.pending,
+      deadCount: queueSummary.dead,
+      nextRetryAtMs: queueSummary.nextRetryAtMs,
       syncing,
       lastSync,
       syncNow
     }),
-    [isOnline, queueCount, syncing, lastSync, syncNow]
+    [isOnline, queueSummary, syncing, lastSync, syncNow]
   );
 }
