@@ -896,6 +896,11 @@ select {
     display: none;
   }
 
+  /* Feed: make reaction bar wrap nicer on small devices */
+  .list-item .btn {
+    max-width: 100%;
+  }
+
   .main {
     padding: 18px;
   }

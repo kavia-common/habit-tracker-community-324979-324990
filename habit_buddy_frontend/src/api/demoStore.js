@@ -177,9 +177,18 @@ function defaultState() {
         author: "Jordan",
         createdAt: new Date(now - 1000 * 60 * 30).toISOString(),
         content: "Day 5 of my streak — the key is making it easy to start.",
+        // Back-compat fields used by older UI (kept)
         likes: 12,
         comments: 2,
-        likedByMe: false
+        likedByMe: false,
+        // New feed enrichment for discovery & filtering
+        tags: ["streaks", "mindset"],
+        reactions: {
+          like: { count: 12, reactedByMe: false },
+          celebrate: { count: 3, reactedByMe: false },
+          support: { count: 5, reactedByMe: false },
+          insightful: { count: 1, reactedByMe: false }
+        }
       },
       {
         id: uid("post"),
@@ -188,9 +197,54 @@ function defaultState() {
         content: "Tiny habit: 5 pushups after brushing teeth. Works wonders.",
         likes: 8,
         comments: 1,
-        likedByMe: true
+        likedByMe: true,
+        tags: ["fitness", "tiny-habits"],
+        reactions: {
+          like: { count: 8, reactedByMe: true },
+          celebrate: { count: 2, reactedByMe: false },
+          support: { count: 1, reactedByMe: false },
+          insightful: { count: 4, reactedByMe: false }
+        }
       }
     ],
+
+    /**
+     * Discovery (demo-only):
+     * Used by Feed to show "Suggested" panels without backend support.
+     */
+    discovery: {
+      tags: [
+        { id: "streaks", label: "Streaks", emoji: "🔥" },
+        { id: "motivation", label: "Motivation", emoji: "💬" },
+        { id: "tiny-habits", label: "Tiny habits", emoji: "🌱" },
+        { id: "fitness", label: "Fitness", emoji: "🏃" },
+        { id: "focus", label: "Focus", emoji: "🎯" },
+        { id: "sleep", label: "Sleep", emoji: "🌙" }
+      ],
+      suggestedGroups: [
+        {
+          id: group1,
+          name: "Morning Momentum",
+          description: "Daily check-ins and positive accountability",
+          members: 18,
+          isPrivate: false,
+          inviteCode: "MOMENTUM"
+        },
+        {
+          id: uid("group"),
+          name: "Hydration Nation",
+          description: "Water reminders + fun weekly goals",
+          members: 92,
+          isPrivate: false,
+          inviteCode: "WATER"
+        }
+      ],
+      suggestedUsers: [
+        { id: uid("user"), name: "Casey", bio: "Here for tiny habits and calm mornings.", streak: 9 },
+        { id: uid("user"), name: "Riley", bio: "Consistency > intensity. Building a reading streak.", streak: 14 },
+        { id: uid("user"), name: "Morgan", bio: "Fitness + hydration. Happy to cheer you on.", streak: 7 }
+      ]
+    },
 
     /**
      * Notifications + reminders
@@ -619,29 +673,81 @@ export const demoApi = {
   listFeed() {
     return getState().feed;
   },
-  createPost(content, { postType = "text" } = {}) {
+
+  /**
+   * Back-compat like toggling used by the earlier Feed UI.
+   * (Internally delegates to the richer reaction model.)
+   */
+  toggleLikePost(postId) {
+    return this.toggleReaction(postId, "like");
+  },
+
+  /**
+   * Toggle a specific reaction on a post.
+   * Supported reactions (demo): like | celebrate | support | insightful
+   */
+  toggleReaction(postId, reactionKey) {
+    updateState((s) => ({
+      ...s,
+      feed: s.feed.map((p) => {
+        if (p.id !== postId) return p;
+
+        const reactions = p.reactions || {};
+        const current = reactions[reactionKey] || { count: 0, reactedByMe: false };
+        const nextReacted = !current.reactedByMe;
+
+        const next = {
+          ...p,
+          reactions: {
+            ...reactions,
+            [reactionKey]: {
+              count: clamp((current.count || 0) + (nextReacted ? 1 : -1), 0, 999999),
+              reactedByMe: nextReacted
+            }
+          }
+        };
+
+        // Keep the old derived fields in sync for UI elements that still show likes.
+        if (reactionKey === "like") {
+          next.likedByMe = nextReacted;
+          next.likes = next.reactions.like?.count ?? next.likes ?? 0;
+        }
+
+        return next;
+      })
+    }));
+    return true;
+  },
+
+  createPost(content, { postType = "text", tags = [] } = {}) {
+    const cleanedTags = Array.isArray(tags)
+      ? [...new Set(tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean))].slice(0, 6)
+      : [];
+
     const post = {
       id: uid("post"),
       author: getState().user.name || "You",
       createdAt: new Date().toISOString(),
       content: content.trim(),
       postType,
+      tags: cleanedTags,
+      // Reactions (new)
+      reactions: {
+        like: { count: 0, reactedByMe: false },
+        celebrate: { count: 0, reactedByMe: false },
+        support: { count: 0, reactedByMe: false },
+        insightful: { count: 0, reactedByMe: false }
+      },
+      // Back-compat fields (kept)
       likes: 0,
       comments: 0,
       likedByMe: false
     };
     return updateState((s) => ({ ...s, feed: [post, ...s.feed] })).feed[0];
   },
-  toggleLikePost(postId) {
-    updateState((s) => ({
-      ...s,
-      feed: s.feed.map((p) => {
-        if (p.id !== postId) return p;
-        const liked = !p.likedByMe;
-        return { ...p, likedByMe: liked, likes: clamp((p.likes || 0) + (liked ? 1 : -1), 0, 999999) };
-      })
-    }));
-    return true;
+
+  listDiscovery() {
+    return getState().discovery || { tags: [], suggestedGroups: [], suggestedUsers: [] };
   },
 
   // -------------------------
