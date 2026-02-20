@@ -6,6 +6,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import { AuthProvider } from "./context/AuthContext";
 import { UIProvider, useUI } from "./context/UIContext";
 import AdminPage from "./pages/AdminPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 import ChallengesPage from "./pages/ChallengesPage";
 import DashboardPage from "./pages/DashboardPage";
 import FeedPage from "./pages/FeedPage";
@@ -42,6 +43,7 @@ export default function App() {
             <Route element={<ProtectedRoute />}>
               <Route path="/app" element={<AppShell />}>
                 <Route path="dashboard" element={<DashboardPage />} />
+                <Route path="analytics" element={<AnalyticsPage />} />
                 <Route path="habits" element={<HabitsPage />} />
                 <Route path="social" element={<SocialPage />} />
                 <Route path="groups" element={<GroupsPage />} />

@@ -10,6 +10,7 @@ function usePageTitle() {
   return useMemo(() => {
     const path = location.pathname || "/";
     if (path.startsWith("/app/dashboard")) return "Dashboard";
+    if (path.startsWith("/app/analytics")) return "Analytics";
     if (path.startsWith("/app/habits")) return "Habits";
     if (path.startsWith("/app/social")) return "Social";
     if (path.startsWith("/app/groups")) return "Groups";
@@ -56,6 +57,16 @@ export default function AppShell() {
                 <div className="nav-label">
                   <span>Dashboard</span>
                   <small>Streaks, badges</small>
+                </div>
+              </NavLink>
+
+              <NavLink to="/app/analytics" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+                <div className="nav-icon" aria-hidden="true">
+                  📈
+                </div>
+                <div className="nav-label">
+                  <span>Analytics</span>
+                  <small>Heatmap & trends</small>
                 </div>
               </NavLink>
 
